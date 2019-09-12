@@ -1,2 +1,2 @@
-# marielund
-Compute kernel for stencil applications in C++ and Java
+# Marielund
+Compute kernel for stencil applications in C++ and Java.

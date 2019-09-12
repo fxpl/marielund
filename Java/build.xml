@@ -1,0 +1,137 @@
+<project>
+
+	<!-- NB: These variables may need to be changed! -->
+	<property name="junit.path" value="/usr/share/java/junit4.jar"/>
+	<property name="hamcrest.path" value="/usr/share/java/hamcrest-all.jar"/>
+	<property name="mpi.path" value="/home/malin/bin/openmpi"/>
+	<property name="dbg" value="off"/>
+	<property name="bin" value="./bin"/>
+
+	<target name="test" depends="unitTest,integrationTest,parallelTest"/>
+	<target name="build" depends="buildUnitTest,buildIntegrationTest,buildParallelTest,buildPerformanceTest"/>
+
+	<target name="clean">
+		<delete dir="${bin}/haparanda"/>
+		<delete file="StencilJava.jar"/>
+	</target>
+
+	<target name="compile">
+		<mkdir dir="${bin}"/>
+		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="src" destdir="${bin}"/>
+	</target>
+
+	<target name="buildUnitTest" depends="compile">
+		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" destdir="${bin}">
+			<classpath>
+				<pathelement location="${junit.path}"/>
+			</classpath>
+			<src location="test/haparanda/utils"/>
+			<src location="test/haparanda/iterators"/>
+			<src location="test/haparanda/grid"/>
+		</javac>
+	</target>
+
+	<target name="unitTest" depends="buildUnitTest">
+		<mkdir dir="reports"/>
+		<junit fork="yes" jvm="${mpi.path}/bin/mpirun" printsummary="yes" haltonfailure="yes">
+			<classpath>
+				<pathelement location="${bin}"/>
+				<pathelement location="${junit.path}"/>
+				<pathelement location="${hamcrest.path}"/>
+			</classpath>
+			<jvmarg line="-np 1"/>
+			<jvmarg value="java"/>
+			<jvmarg value="-DDIM=3"/>
+			<jvmarg value="-DTHR=3"/>
+			<jvmarg value="-ea"/>
+			<formatter type="plain"/>
+			<batchtest todir="reports">
+				<fileset dir="test">
+					<include name="haparanda/utils/*Test.java"/>
+					<include name="haparanda/iterators/*Test.java"/>
+					<exclude name="haparanda/iterators/FieldIteratorTest.java"/>
+					<include name="haparanda/grid/*Test.java"/>
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+	<target name="buildIntegrationTest" depends="compile">
+		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="test/haparanda/integrationTest" destdir="${bin}">
+			<classpath>
+				<pathelement location="${junit.path}"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="integrationTest" depends="buildIntegrationTest">
+		<mkdir dir="reports"/>
+		<junit fork="yes" jvm="${mpi.path}/bin/mpirun" printsummary="yes" haltonfailure="yes">
+			<classpath>
+				<pathelement location="${bin}"/>
+				<pathelement location="${junit.path}"/>
+				<pathelement location="${hamcrest.path}"/>
+			</classpath>
+			<jvmarg line="-np 1"/>
+			<jvmarg value="java"/>
+			<jvmarg value="-DDIM=3"/>
+			<jvmarg value="-DOOA=8"/>
+			<jvmarg value="-DTHR=3"/>
+			<jvmarg value="-ea"/>
+			<formatter type="plain"/>
+			<batchtest fork="yes" todir="reports">
+				<fileset dir="test">
+					<include name="haparanda/integrationTest/*Test.java"/>
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+	<target name="buildParallelTest" depends="compile">
+		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="test/haparanda/parallelTest" destdir="${bin}">
+			<classpath>
+				<pathelement location="${junit.path}"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="parallelTest" depends="buildParallelTest">
+		<mkdir dir="reports"/>
+		<junit fork="yes" jvm="${mpi.path}/bin/mpirun" printsummary="yes" haltonfailure="yes">
+			<classpath>
+				<pathelement location="${bin}"/>
+				<pathelement location="${junit.path}"/>
+				<pathelement location="${hamcrest.path}"/>
+			</classpath>
+			<jvmarg line="-np 1"/>
+			<jvmarg value="java"/>
+			<jvmarg value="-DDIM=3"/>
+			<jvmarg value="-DOOA=8"/>
+			<jvmarg value="-DTHR=3"/>
+			<jvmarg value="-ea"/>
+			<formatter type="plain"/>
+			<batchtest fork="yes" todir="reports">
+				<fileset dir="test">
+					<include name="haparanda/parallelTest/*Test.java"/>
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+	<target name="buildPerformanceTest" depends="compile">
+		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="test/haparanda/performanceTest" destdir="${bin}">
+		</javac>
+	</target>
+
+	<target name="jar" depends="buildPerformanceTest">
+		<jar destfile="StencilJava.jar">
+			<fileset dir="${bin}">
+				<include name="haparanda/*/*.class"/>
+				<exclude name="haparanda/integrationTest"/>
+				<exclude name="haparanda/parallelTest"/>
+				<exclude name="haparanda/*/*Test.class"/>
+			</fileset>
+		</jar>
+	</target>
+
+</project>
