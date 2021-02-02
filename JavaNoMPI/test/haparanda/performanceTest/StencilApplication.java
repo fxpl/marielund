@@ -1,8 +1,6 @@
 package haparanda.performanceTest;
 
-import mpi.*;
 import java.io.*;
-import java.nio.DoubleBuffer;
 import java.util.Arrays;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -14,7 +12,7 @@ import haparanda.utils.*;
  * Class that can be used for testing application of a constant 8:th order
  * finite difference stencil.
  *
- * @author Malin Kallen 2017-2019
+ * @author Malin Kallen 2017-2019, 2021
  */
 public class StencilApplication
 {
@@ -25,7 +23,7 @@ public class StencilApplication
 	private BlockOperator stencil;
 	private double[] inputValues;
 	private double[] resultValues;
-	private CommunicativeBlock inputBlock;
+	private ComputationalComposedBlock inputBlock;
 	private ComputationalBlock resultBlock;
 	private Timer setUpTimer;
 	private Timer totalTimer;
@@ -51,7 +49,7 @@ public class StencilApplication
 	 *
 	 * Copyright Malin Kallen 2014, 2017-2019
 	 */
-	public static void main(String[] args) throws MPIException {
+	public static void main(String[] args) {
 		if (4 != args.length) {
 			System.out.println("Usage: stencil_haparanda <block size in each dimension> <name of output file> <number of applications of the stencil to the area> <number of warm up applications>");
 		}
@@ -60,11 +58,8 @@ public class StencilApplication
 		int nSteps = Integer.parseInt(args[2]);
 		int nWarmUp = Integer.parseInt(args[3]);
 		
-		MPI.Init(new String[0]);
 		final StencilApplication application = new StencilApplication(size);
 		application.run(nSteps, nWarmUp, fileName);
-		MPI.COMM_WORLD.barrier();
-		MPI.Finalize();
 		FixedThreadPoolExecutor.destroy();
 	}
 
@@ -77,9 +72,8 @@ public class StencilApplication
 	 * maximum coordinate value is 1.
 	 *
 	 * @param pointsPerUnit The number of grid points in each dimension of the block on which the stencil will be applied
-	 * @throws MPIException 
 	 */
-	public StencilApplication(int pointsPerUnit) throws MPIException {
+	public StencilApplication(int pointsPerUnit) {
 		/* Create and start the timers */
 		setUpTimer = new Timer();
 		setUpTimer.start(false);
@@ -105,7 +99,6 @@ public class StencilApplication
 		stencil = new ConstFD8Stencil(DIMENSIONALITY, stepLength);
 	
 		setUpTimer.stop();
-		MPI.COMM_WORLD.barrier();
 		totalTimer.stop();
 	}
 
@@ -117,9 +110,8 @@ public class StencilApplication
 	 * @param nSteps Number of times the stencil will be applied
 	 * @param outputFileName Path to the file to which the execution times will be written.
 	 * @param nWarmUp Number of warm up applications
-	 * @throws MPIException 
 	 */
-	public final void run(int nSteps, int nWarmUp, String outputFileName) throws MPIException {
+	public final void run(int nSteps, int nWarmUp, String outputFileName) {
 		totalTimer.start(false);
 		applyStencil(nSteps, nWarmUp);
 		totalTimer.stop();
@@ -138,16 +130,14 @@ public class StencilApplication
 	 *
 	 * @param nSteps Number of times the stencil will be applied
 	 * @param nWarmUp Number of warm up applications
-	 * @throws MPIException 
 	 */
-	private final void applyStencil(int nSteps, int nWarmUp) throws MPIException {
+	private final void applyStencil(int nSteps, int nWarmUp) {
 		warmUp(nWarmUp);
 		for(int t=0; t<nSteps; t++) {
 			System.out.println("Application " + t + ": " + (System.currentTimeMillis() / 1000L));
+			inputBlock.initializeSideRegions();
 			// Apply the stencil
-			inputBlock.startCommunication();
 			stencil.apply(inputBlock, resultBlock);
-			inputBlock.finishCommunication();
 			// Each application is done on the output from the previous one
 			double[] tmp = resultValues;
 			resultValues = inputValues;
@@ -204,47 +194,28 @@ public class StencilApplication
 	 * @param nSteps Number of times the stencil was applied
 	 * @param nWarmUp Number of warm up applications done
 	 * @param outputFileName Path to the file to which the execution times will be written.
-	 * @throws MPIException 
 	 * @throws FileNotFoundException 
 	 */
-	private final void reportResults(int nSteps, int nWarmUp, String outputFileName) throws MPIException {
-		DoubleBuffer localTotalTime = MPI.newDoubleBuffer(1);
-		localTotalTime.put(totalTimer.totalElapsedTime(false));
-		DoubleBuffer localSetUpTime = MPI.newDoubleBuffer(1);
-		localSetUpTime.put(setUpTimer.totalElapsedTime(false));
-		DoubleBuffer localCompTime = MPI.newDoubleBuffer(1);
-		localCompTime.put(stencil.computationTime());
-		DoubleBuffer localCommTime = MPI.newDoubleBuffer(1);
-		localCommTime.put(inputBlock.communicationTime());
-		DoubleBuffer localCompCommTime = MPI.newDoubleBuffer(1);
-		localCompCommTime.put(stencil.computationTime() + inputBlock.communicationTime());
+	private final void reportResults(int nSteps, int nWarmUp, String outputFileName) {
+		double totalTime = totalTimer.totalElapsedTime(false);
+		double setUpTime = setUpTimer.totalElapsedTime(false);
+		double compTime = stencil.computationTime();
+		double commTime = 0;
+		double compCommTime = compTime + commTime;
 		
-		int nProcesses = MPI.COMM_WORLD.getSize();
+		int nProcesses = 1;
 		int nThreads = FixedThreadPoolExecutor.getThreadPoolExecutor().getMaximumPoolSize();
-		
-		DoubleBuffer globalTotalTime = MPI.newDoubleBuffer(1);
-		MPI.COMM_WORLD.reduce(localTotalTime, globalTotalTime, 1, MPI.DOUBLE, MPI.MAX, 0);
-		DoubleBuffer globalSetUpTime = MPI.newDoubleBuffer(1);
-		MPI.COMM_WORLD.reduce(localSetUpTime, globalSetUpTime, 1, MPI.DOUBLE, MPI.MAX, 0);
-		DoubleBuffer globalCompTime = MPI.newDoubleBuffer(1);
-		MPI.COMM_WORLD.reduce(localCompTime, globalCompTime, 1, MPI.DOUBLE, MPI.MAX, 0);
-		DoubleBuffer globalCommTime = MPI.newDoubleBuffer(1);
-		MPI.COMM_WORLD.reduce(localCommTime, globalCommTime,  1,  MPI.DOUBLE, MPI.MAX, 0);
-		DoubleBuffer globalCompCommTime = MPI.newDoubleBuffer(1);
-		MPI.COMM_WORLD.reduce(localCompCommTime, globalCompCommTime, 1, MPI.DOUBLE, MPI.MAX, 0);
 	
-		if (0==MPI.COMM_WORLD.getRank()) {
-			try {
-				java.io.File outputFile = new java.io.File(outputFileName);
-				final Writer writer = new FileWriter(outputFile, true);
-				writer.write(DIMENSIONALITY + "," + this.pointsPerUnit + "," + ORDER_OF_ACCURACY + ",");
-				writer.write(nProcesses + "," + nThreads + "," + nSteps + "," + nWarmUp + ",");
-				writer.write(globalTotalTime.get(0) + "," + globalSetUpTime.get(0) + ",");
-				writer.write(globalCompTime.get(0) + "," + globalCommTime.get(0) + "," + globalCompCommTime.get(0) + "\n");
-				writer.close();
-			} catch (IOException e) {
-				System.out.println("Error when writing to " + outputFileName + ":" + e.getMessage());
-			}
+		try {
+			java.io.File outputFile = new java.io.File(outputFileName);
+			final Writer writer = new FileWriter(outputFile, true);
+			writer.write(DIMENSIONALITY + "," + this.pointsPerUnit + "," + ORDER_OF_ACCURACY + ",");
+			writer.write(nProcesses + "," + nThreads + "," + nSteps + "," + nWarmUp + ",");
+			writer.write(totalTime + "," + setUpTime + ",");
+			writer.write(compTime + "," + commTime + "," + compCommTime + "\n");
+			writer.close();
+		} catch (IOException e) {
+			System.out.println("Error when writing to " + outputFileName + ":" + e.getMessage());
 		}
 	}
 
@@ -252,13 +223,12 @@ public class StencilApplication
 	 * Apply the stencil in the input values the specified number of times, in
 	 * order to warm up the VM.
 	 * @param n Number of warm up applications
-	 * @throws MPIException 
 	 */
-	private final void warmUp(int n) throws MPIException {
+	private final void warmUp(int n) {
 		setUpTimer.start(false);
 		// Create warm up objects
 		// Separate input block is needed since it records communication time
-		CommunicativeBlock warmUpInput = new ComputationalComposedBlock(pointsPerUnit, ORDER_OF_ACCURACY/2);
+		ComputationalComposedBlock warmUpInput = new ComputationalComposedBlock(pointsPerUnit, ORDER_OF_ACCURACY/2);
 		warmUpInput.setValues(inputValues);
 		// Separate stencil is needed since it records computation time
 		double[] stepLength = new double[DIMENSIONALITY];
@@ -267,9 +237,8 @@ public class StencilApplication
 		// Apply warm up stencil
 		for (int i=0; i<n; i++) {
 			System.out.println("Warm up application " + i + ": " + (System.currentTimeMillis() / 1000L));
-			warmUpInput.startCommunication();
+			warmUpInput.initializeSideRegions();
 			warmUpStencil.apply(warmUpInput, resultBlock);
-			warmUpInput.finishCommunication();
 		}
 		setUpTimer.stop();
 		System.out.println(n + " warm up applications done: " + (System.currentTimeMillis() / 1000L));
