@@ -72,7 +72,8 @@
 				<pathelement location="${junit.path}"/>
 				<pathelement location="${hamcrest.path}"/>
 			</classpath>
-			<jvmarg line="-np 1"/>
+			<jvmarg line="--oversubscribe"/>
+			<jvmarg line="-np 2"/>
 			<jvmarg value="java"/>
 			<jvmarg value="-DDIM=3"/>
 			<jvmarg value="-DOOA=8"/>
@@ -103,7 +104,8 @@
 				<pathelement location="${junit.path}"/>
 				<pathelement location="${hamcrest.path}"/>
 			</classpath>
-			<jvmarg line="-np 1"/>
+			<jvmarg line="--oversubscribe"/>
+			<jvmarg line="-np 4"/>
 			<jvmarg value="java"/>
 			<jvmarg value="-DDIM=3"/>
 			<jvmarg value="-DOOA=8"/>
