@@ -3,12 +3,11 @@
 	<!-- NB: These variables may need to be changed! -->
 	<property name="junit.path" value="/usr/share/java/junit4.jar"/>
 	<property name="hamcrest.path" value="/usr/share/java/hamcrest-all.jar"/>
-	<property name="mpi.path" value="/home/malin/bin/openmpi"/>
 	<property name="dbg" value="off"/>
 	<property name="bin" value="./bin"/>
 
-	<target name="test" depends="unitTest,integrationTest,parallelTest"/>
-	<target name="build" depends="buildUnitTest,buildIntegrationTest,buildParallelTest,buildPerformanceTest"/>
+	<target name="test" depends="unitTest,integrationTest"/>
+	<target name="build" depends="buildUnitTest,buildIntegrationTest,buildPerformanceTest"/>
 
 	<target name="clean">
 		<delete dir="${bin}/haparanda"/>
@@ -17,11 +16,11 @@
 
 	<target name="compile">
 		<mkdir dir="${bin}"/>
-		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="src" destdir="${bin}"/>
+		<javac debug="${dbg}" fork="yes" includeantruntime="false" srcdir="src" destdir="${bin}"/>
 	</target>
 
 	<target name="buildUnitTest" depends="compile">
-		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" destdir="${bin}">
+		<javac debug="${dbg}" fork="yes" includeantruntime="false" destdir="${bin}">
 			<classpath>
 				<pathelement location="${junit.path}"/>
 			</classpath>
@@ -33,14 +32,12 @@
 
 	<target name="unitTest" depends="buildUnitTest">
 		<mkdir dir="reports"/>
-		<junit fork="yes" jvm="${mpi.path}/bin/mpirun" printsummary="yes" haltonfailure="yes">
+		<junit fork="yes" printsummary="yes" haltonfailure="yes">
 			<classpath>
 				<pathelement location="${bin}"/>
 				<pathelement location="${junit.path}"/>
 				<pathelement location="${hamcrest.path}"/>
 			</classpath>
-			<jvmarg line="-np 1"/>
-			<jvmarg value="java"/>
 			<jvmarg value="-DDIM=3"/>
 			<jvmarg value="-DTHR=3"/>
 			<jvmarg value="-ea"/>
@@ -57,7 +54,7 @@
 	</target>
 
 	<target name="buildIntegrationTest" depends="compile">
-		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="test/haparanda/integrationTest" destdir="${bin}">
+		<javac debug="${dbg}" fork="yes" includeantruntime="false" srcdir="test/haparanda/integrationTest" destdir="${bin}">
 			<classpath>
 				<pathelement location="${junit.path}"/>
 			</classpath>
@@ -66,14 +63,12 @@
 
 	<target name="integrationTest" depends="buildIntegrationTest">
 		<mkdir dir="reports"/>
-		<junit fork="yes" jvm="${mpi.path}/bin/mpirun" printsummary="yes" haltonfailure="yes">
+		<junit fork="yes" jvm="java" printsummary="yes" haltonfailure="yes">
 			<classpath>
 				<pathelement location="${bin}"/>
 				<pathelement location="${junit.path}"/>
 				<pathelement location="${hamcrest.path}"/>
 			</classpath>
-			<jvmarg line="-np 1"/>
-			<jvmarg value="java"/>
 			<jvmarg value="-DDIM=3"/>
 			<jvmarg value="-DOOA=8"/>
 			<jvmarg value="-DTHR=3"/>
@@ -87,39 +82,8 @@
 		</junit>
 	</target>
 
-	<target name="buildParallelTest" depends="compile">
-		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="test/haparanda/parallelTest" destdir="${bin}">
-			<classpath>
-				<pathelement location="${junit.path}"/>
-			</classpath>
-		</javac>
-	</target>
-
-	<target name="parallelTest" depends="buildParallelTest">
-		<mkdir dir="reports"/>
-		<junit fork="yes" jvm="${mpi.path}/bin/mpirun" printsummary="yes" haltonfailure="yes">
-			<classpath>
-				<pathelement location="${bin}"/>
-				<pathelement location="${junit.path}"/>
-				<pathelement location="${hamcrest.path}"/>
-			</classpath>
-			<jvmarg line="-np 1"/>
-			<jvmarg value="java"/>
-			<jvmarg value="-DDIM=3"/>
-			<jvmarg value="-DOOA=8"/>
-			<jvmarg value="-DTHR=3"/>
-			<jvmarg value="-ea"/>
-			<formatter type="plain"/>
-			<batchtest fork="yes" todir="reports">
-				<fileset dir="test">
-					<include name="haparanda/parallelTest/*Test.java"/>
-				</fileset>
-			</batchtest>
-		</junit>
-	</target>
-
 	<target name="buildPerformanceTest" depends="compile">
-		<javac debug="${dbg}" fork="yes" executable="${mpi.path}/bin/mpijavac" includeantruntime="false" srcdir="test/haparanda/performanceTest" destdir="${bin}">
+		<javac debug="${dbg}" fork="yes" includeantruntime="false" srcdir="test/haparanda/performanceTest" destdir="${bin}">
 		</javac>
 	</target>
 
@@ -128,7 +92,6 @@
 			<fileset dir="${bin}">
 				<include name="haparanda/*/*.class"/>
 				<exclude name="haparanda/integrationTest"/>
-				<exclude name="haparanda/parallelTest"/>
 				<exclude name="haparanda/*/*Test.class"/>
 			</fileset>
 		</jar>

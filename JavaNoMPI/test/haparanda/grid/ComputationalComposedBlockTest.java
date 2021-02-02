@@ -2,7 +2,6 @@ package haparanda.grid;
 
 import static org.junit.Assert.*;
 import org.junit.*;
-import mpi.*;
 
 import haparanda.iterators.BoundaryIterator;
 import haparanda.iterators.ComposedFieldBoundaryIterator;
@@ -14,7 +13,7 @@ import haparanda.utils.*;
  * Unit test for ComputationalComposedBlocks.
  *
  * @author Malin Kallen
- * @copyright Malin Kallen 2017-2019
+ * @copyright Malin Kallen 2017-2019, 2021
  */
 public class ComputationalComposedBlockTest 
 {
@@ -24,14 +23,9 @@ public class ComputationalComposedBlockTest
 	protected int extent;
 	protected ComputationalComposedBlock block;
 	private double[] values;
-	
-	@BeforeClass
-	public static void initMPI() throws MPIException {
-		MPI.Init(new String[0]);
-	}
 
 	@Before
-	public void setUp() throws MPIException {
+	public void setUp() {
 		elementsPerDim = 10;
 		totalSize = HaparandaMath.power(elementsPerDim, DIMENSIONALITY);
 		extent = 4;
@@ -44,26 +38,15 @@ public class ComputationalComposedBlockTest
 		block = new ComputationalComposedBlock(elementsPerDim, extent, values);
 	}
 	
-	@After
-	public void tearDown() throws MPIException {
-		block.free();
-	}
-	
-	@AfterClass
-	public static void finalizeMPI() throws MPIException {
-		MPI.Finalize();
-	}
-	
 	/**
 	 * Verify that the constructor that does not take values as an argument
 	 * - Sets elementsPerDim to the value provided
 	 * - Can be initialized with setValues
 	 * The latter means (among other things) that the ghost regions probably are
 	 * created correctly.
-	 * @throws MPIException 
 	 */
 	@Test
-	public final void testConstructorNoValues() throws MPIException {
+	public final void testConstructorNoValues() {
 		ComputationalComposedBlock lateInitBlock = new ComputationalComposedBlock(elementsPerDim, extent);
 		assertEquals(elementsPerDim, lateInitBlock.getElementsPerDim());
 
@@ -72,12 +55,9 @@ public class ComputationalComposedBlockTest
 			lateValues[i] = 1.2 * i;
 		}
 		lateInitBlock.setValues(lateValues);
-		lateInitBlock.startCommunication();
+		lateInitBlock.initializeSideRegions();	// TODO: Behöver detta göras nu, eller bara mellan varje applikation?
 		verifyInnerValues(lateInitBlock, lateValues);
 		verifyGhostRegionValues(lateInitBlock);
-		lateInitBlock.finishCommunication();
-		lateInitBlock.free();
-
 	}
 
 	/**
@@ -85,17 +65,13 @@ public class ComputationalComposedBlockTest
 	 * - Sets elementsPerDim to the value provided
 	 * - Sets the value array to the one provided
 	 * - Creates ghost regions and initializes them using periodic boundary conditions
-	 * Note that this test must not be run when there is > 1 processor in the
-	 * simulation
-	 * @throws MPIException 
 	 */
 	@Test
-	public final void testConstructorValues() throws MPIException {
-		block.startCommunication();
+	public final void testConstructorValues() {
+		block.initializeSideRegions();	// TODO: Behöver detta göras nu, eller bara mellan varje applikation?
 		assertEquals(elementsPerDim, block.getElementsPerDim());
 		verifyInnerValues(block, values);
 		verifyGhostRegionValues(block);
-		block.finishCommunication();
 	}
 	
 	/**
@@ -114,31 +90,6 @@ public class ComputationalComposedBlockTest
 			bdIterator.next();
 		}
 		bdIterator.currentNeighbor(0, extent + 1);
-	}
-
-	/**
-	 * Verify that procGridCoords returns a positive number smaller than the
-	 * size of the processor grid in each dimension.
-	 */
-	@Test
-	public final void testProcGridCoord() {
-		for (int d=0; d<DIMENSIONALITY; d++) {
-			assertTrue(0 <= block.procGridCoord(d)
-					&& block.procGridCoord(d)<block.procGridSize(d));
-		}
-	}
-
-	/**
-	 * Verify that procGridSize returns a number between 1 and the total number
-	 * of processors in all dimensions.
-	 * @throws MPIException 
-	 */
-	@Test
-	public final void testProcGridSize() throws MPIException {
-		for (int d=0; d<DIMENSIONALITY; d++) {
-			assertTrue(0 < block.procGridSize(d)
-					&& block.procGridSize(d) <= MPI.COMM_WORLD.getSize());
-		}
 	}
 	
 	/**
@@ -163,7 +114,7 @@ public class ComputationalComposedBlockTest
 
 	/**
 	 * Verify that getInnerIterator returns a ValueFieldIterator whose size in
-	 * each dimension is the with of the block (excluding ghost regions) and
+	 * each dimension is the width of the block (excluding ghost regions) and
 	 * whose first value is the the one specified by the value array and the
 	 * smallest index.
 	 */
@@ -182,21 +133,21 @@ public class ComputationalComposedBlockTest
 	}
 	
 	/**
-	 * Verify that the ghost region of a side of the block is initialized with
-	 * values from the opposite boundary (Values are the same on all nodes!) when
-	 * receiveDoneAt returns and the argument is initialized with values of the
-	 * actual boundary. Do this for every boundary of the block.
-	 * @throws MPIException 
+	 * Verify that initializeSideRegions initializes the each region with
+	 * values from the opposite boundary. (The block is its own neighbor in all
+	 * directions.)
+	 * TODO: Testa med andra grannar!
 	 */
 	@Test
-	public final void testReceiveDoneAt() throws MPIException {
-		block.startCommunication();
-		BoundaryId initialized = new BoundaryId();
+	public final void testInitializeSideRegions() {
+		block.initializeSideRegions();
 		BoundaryIterator initializedIterator = block.getBoundaryIterator();
 		// Values are the same in all blocks.
 		BoundaryIterator oppositeIterator = block.getBoundaryIterator();
+		BoundaryId initialized = new BoundaryId();
 		for (int i=0; i<2*DIMENSIONALITY; i++) {
-			block.receiveDoneAt(initialized);
+			initialized.setDimension(i/2);
+			initialized.setIsLowerSide(1==i%2);
 			initializedIterator.setBoundaryToIterate(initialized);
 			BoundaryId oppositeBoundary = initialized.oppositeSide();
 			oppositeIterator.setBoundaryToIterate(oppositeBoundary);
@@ -212,25 +163,22 @@ public class ComputationalComposedBlockTest
 				initializedIterator.next();
 			}
 		}
-		block.finishCommunication();
 	}
 
 	/**
 	 * Verify that setValues changes the values stored in a block to the ones in
 	 * the array provided as argument.
-	 * @throws MPIException 
 	 */
 	@Test
-	public final void testSetValues() throws MPIException {
+	public final void testSetValues() {
 		double[] newValues = new double[totalSize];
 		for (int i=0; i<totalSize; i++) {
 			newValues[i] = 7.8*i;
 		}
 		block.setValues(newValues);
-		block.startCommunication();
+		block.initializeSideRegions();
 		verifyInnerValues(block, newValues);
 		verifyGhostRegionValues(block);
-		block.finishCommunication();
 	}
 
 	/**
@@ -238,14 +186,14 @@ public class ComputationalComposedBlockTest
 	 * initialized using periodic boundary conditions.
 	 *
 	 * @param block Block for investigation
-	 * @throws MPIException 
 	 */
-	private final void verifyGhostRegionValues(ComputationalComposedBlock block) throws MPIException {
+	private final void verifyGhostRegionValues(ComputationalComposedBlock block) {
 		BoundaryIterator boundaryIterator = block.getBoundaryIterator();
 		BoundaryIterator expectedValuesIterator = block.getBoundaryIterator();
 		BoundaryId boundary = new BoundaryId();
 		for (int d=0; d<2*DIMENSIONALITY; d++) {
-			block.receiveDoneAt(boundary);
+			boundary.setDimension(d/2);
+			boundary.setIsLowerSide(1==d%2);
 			boundaryIterator.setBoundaryToIterate(boundary);
 			BoundaryId oppositeBoundary = boundary.oppositeSide();
 			expectedValuesIterator.setBoundaryToIterate(oppositeBoundary);

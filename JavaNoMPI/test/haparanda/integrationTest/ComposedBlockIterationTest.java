@@ -5,14 +5,12 @@ import org.junit.*;
 import haparanda.grid.*;
 import haparanda.iterators.*;
 import haparanda.utils.*;
-import mpi.MPI;
-import mpi.MPIException;
 
 /**
  * Integration test for ComputationalComposedBlock + ComposedFieldBoundaryIterator.
  *
  * @author Malin Kallen
- * @copyright Malin Kallen 2017-2019
+ * @copyright Malin Kallen 2017-2019, 2021
  */
 public class ComposedBlockIterationTest 
 {
@@ -22,17 +20,11 @@ public class ComposedBlockIterationTest
 	protected BoundaryIterator boundaryIterator;
 	private int elementsPerDim;
 	private int[] stride;
-	private int[] interBlockStride;
 	private double[] values;
 	private ComputationalComposedBlock composedBlock;
-	
-	@BeforeClass
-	public static void initMPI() throws MPIException {
-		MPI.Init(new String[0]);
-	}
 
 	@Before
-	public void setUp() throws MPIException {
+	public void setUp() {
 		assertEquals(3, DIMENSIONALITY);
 		elementsPerDim = 10;
 		extent = 4;
@@ -40,20 +32,14 @@ public class ComposedBlockIterationTest
 		boundarySize = numElements/elementsPerDim;
 		stride = new int[DIMENSIONALITY];
 		stride[0]=1; stride[1]=elementsPerDim; stride[2]=elementsPerDim*elementsPerDim;
-		interBlockStride = new int[DIMENSIONALITY];
-		interBlockStride[0]=numElements; interBlockStride[1]=3*numElements; interBlockStride[2]=0;
 
 		values = new double[numElements];
 		for (int i=0; i<numElements; i++) {
 			values[i] = 2.1 * i;
 		}
 		composedBlock = new ComputationalComposedBlock(elementsPerDim, extent, values);
+		composedBlock.initializeSideRegions();	// TODO: Flytta!
 		boundaryIterator = composedBlock.getBoundaryIterator();
-	}
-	
-	@AfterClass
-	public static void finalizeMPI() throws MPIException {
-		MPI.Finalize();
 	}
 	
 	/**
@@ -62,15 +48,14 @@ public class ComposedBlockIterationTest
 	 * in which the value is constant on the current boundary and the sign of i
 	 * is set so that the requested neighbor is in a the ghost region. Verify
 	 * that a value between 0 and 1 was returned.
-	 * @throws MPIException 
 	 */
 	@Test
-	public final void testCurrentBoundaryNeighborInGhostRegion() throws MPIException {
-		composedBlock.startCommunication();
+	public final void testCurrentBoundaryNeighborInGhostRegion() {
 		BoundaryIterator expectedIterator = composedBlock.getBoundaryIterator(); // Values are the same on all nodes
 		BoundaryId boundary = new BoundaryId();
 		for (int d=0; d<2*DIMENSIONALITY; d++) {
-			composedBlock.receiveDoneAt(boundary);
+			boundary.setDimension(d/2);
+			boundary.setIsLowerSide(1==d%2);
 			boundaryIterator.setBoundaryToIterate(boundary);
 			BoundaryId oppositeBoundary = boundary.oppositeSide();
 			expectedIterator.setBoundaryToIterate(oppositeBoundary);
@@ -92,7 +77,6 @@ public class ComposedBlockIterationTest
 				}
 			}
 		}
-		composedBlock.finishCommunication();
 	}
 
 	/**

@@ -1,8 +1,5 @@
 package haparanda.grid;
 
-import mpi.*;
-import java.nio.DoubleBuffer;
-
 import haparanda.iterators.*;
 import haparanda.utils.*;
 
@@ -13,49 +10,55 @@ import haparanda.utils.*;
  * Note that this type of block assumes the element indices to be
  * consecutive!
  *
- * @author Malin Kallen 2017-2019
+ * @author Malin Kallen 2017-2019, 2021
  */
-public class ComputationalComposedBlock extends CommunicativeBlock
+public class ComputationalComposedBlock extends ComputationalBlock
 {
 	GhostRegion[][] ghostRegions;
 	private int extent;  // Size in dimension i of ghost regions located along the boundaries where x_i is constant
-	private Datatype[] commDataBlockTypes = new Datatype[DIMENSIONALITY];
-	private DoubleBuffer sendBuffer;
+	private ComputationalBlock[] neighbors = new ComputationalBlock[2*DIMENSIONALITY];
 	
 	/**
-	 * Create ghost regions and initialize everything MPI related.
+	 * Initialize size-related variables and neighbor array, and create ghost
+	 * regions.
+	 * 
+	 * Note that the block is set as its own neighbor in each
+	 * direction. When several blocks are present, neighbors need to be sed
+	 * explicitly!
 	 *
 	 * @param elementsPerDim Block size in each dimension
 	 * @param extent Width of ghost regions
-	 * @throws MPIException 
 	 */
-	public ComputationalComposedBlock(int elementsPerDim, int extent) throws MPIException {
+	public ComputationalComposedBlock(int elementsPerDim, int extent) {
 		super(elementsPerDim);
 		this.extent = extent;
 		createGhostRegions();
-		prepareCommunication();
+		for (int i=0; i<2*DIMENSIONALITY; i++) {
+			this.neighbors[i] = this;
+			// TODO: Egen metod! Metod för att sätta andra!
+		}
 	}
 	
 	/**
-	 * Create ghost regions and initialize everything MPI related.
-	 * Initialize the block with its values.
+	 * Initialize size-related variables and neighbor array, and create ghost
+	 * regions. Initialize the block with its values.
+	 * 
+	 * Note that the block is set as its own neighbor in each
+	 * direction. When several blocks are present, neighbors need to be sed
+	 * explicitly!
 	 *
 	 * @param elementsPerDim Block size in each dimension
 	 * @param extent Width of ghost regions
 	 * @param values Array containing values to be stored in this block
 	 * @throws MPIException 
 	 */
-	public ComputationalComposedBlock(int elementsPerDim, int extent, double[] values) throws MPIException {
+	public ComputationalComposedBlock(int elementsPerDim, int extent, double[] values) {
 		super(elementsPerDim, values);
 		this.extent = extent;
 		createGhostRegions();
-		prepareCommunication();
-	}
-	
-	public void free() throws MPIException {
-		super.free();
-		for (int i=0; i<DIMENSIONALITY; i++) {
-			commDataBlockTypes[i].free();
+		for (int i=0; i<2*DIMENSIONALITY; i++) {
+			this.neighbors[i] = this;
+			// TODO: Egen metod! Metod för att sätta andra!
 		}
 	}
 	
@@ -86,62 +89,49 @@ public class ComputationalComposedBlock extends CommunicativeBlock
 		return new ValueFieldIterator(sizes, this.values, this.smallestIndex, currentTask);
 	}
 	
-	public void receiveDoneAt(BoundaryId boundary) throws MPIException {
-		this.communicationTimer.start(false);
-		int index = Request.waitAny(this.receiveRequest);
-		boundary.setDimension(index/2);
-		boundary.setIsLowerSide(1==index%2);
-		int upper = boundary.isLowerSide() ? 0 : 1;
-		ghostRegions[boundary.getDimension()][upper].fetchBufferValues();
-		this.communicationTimer.stop();
-	}
-	
-	protected void initializeBlockDataTypes() throws MPIException {
-		int[] stride = new int[DIMENSIONALITY];
-		stride[0] = 1;
-		for (int d=1; d<DIMENSIONALITY; d++) {
-			stride[d] = stride[d-1] * this.elementsPerDim;
-		}
-		Datatype[] tmpTypes = new Datatype[DIMENSIONALITY+1];
-		tmpTypes[0] = MPI.DOUBLE;
-		int MPI_DOUBLE_SIZE = 8;	// In bytes
+	/**
+	 * Initialize all side regions with values from neighbors.
+	 */
+	public void initializeSideRegions() {
+		BoundaryId boundary = new BoundaryId();
+		// Loop over the boundaries
 		for (int i=0; i<DIMENSIONALITY; i++) {
-			for (int j=0; j<DIMENSIONALITY; j++) {
-				if (i==j) {
-					tmpTypes[j+1] = Datatype.createHVector(extent, 1, stride[j] * MPI_DOUBLE_SIZE, tmpTypes[j]);
-				} else {
-					tmpTypes[j+1] = Datatype.createHVector(this.elementsPerDim, 1, stride[j] * MPI_DOUBLE_SIZE, tmpTypes[j]);
-				}
+			for (int j=0; j<2; j++) {
+				boundary.setDimension(i);
+				boundary.setIsLowerSide(0==j);
+				initializeSideRegion(neighbors[2*i + j], boundary);
 			}
-			commDataBlockTypes[i] = tmpTypes[DIMENSIONALITY];
-			commDataBlockTypes[i].commit();
 		}
 	}
 	
 	/**
-	 * Note that the requests are only initialized and started if values is
-	 * set! 
+	 * Initialize the ghost region at the side specified by boundary using
+	 * values from a neighboring block.
+	 *
+	 * @param neighbor Neighboring block to fetch values from
+	 * @param boundary Representation of the side at which the ghost region to initialize is located
 	 */
-	protected void startReceive() throws MPIException {
-		if (null != this.values) {
-			for (int i=0; i<DIMENSIONALITY; i++) {
-				this.receiveRequest[2*i+1] = ghostRegions[i][0].initializeReceive(
-						this.communicator, this.neighborRank[i][0]);
-				this.receiveRequest[2*i] = ghostRegions[i][1].initializeReceive(
-						this.communicator, this.neighborRank[i][1]);
+	private void initializeSideRegion(final ComputationalBlock neighbor, final BoundaryId boundary) {
+		// Iterator for fetching values
+		BoundaryIterator neighborIterator = neighbor.getBoundaryIterator();
+		BoundaryId oppositeBoundary = boundary.oppositeSide();
+		neighborIterator.setBoundaryToIterate(oppositeBoundary);
+		
+		// Iterator for the ghost region that is to be initialized
+		int dirIndex = boundary.isLowerSide() ? 0 : 1;
+		BoundaryIterator ghostIterator = ghostRegions[boundary.getDimension()][dirIndex].getBoundaryIterator();
+		ghostIterator.setBoundaryToIterate(oppositeBoundary);
+		
+		int direction = boundary.isLowerSide() ? -1 : 1;
+		
+		// Copy data into ghost region
+		while (neighborIterator.isInField()) {
+			for (int i=0; i<this.extent; i++) {
+				ghostIterator.setCurrentNeighbor(boundary.getDimension(), i*direction,
+						neighborIterator.currentNeighbor(boundary.getDimension(),  i*direction));
 			}
-			Prequest.startAll(this.receiveRequest);
-		}
-	}
-
-	/**
-	 * Note that the requests are only initialized and started if values is
-	 * set!
-	 * @throws MPIException 
-	 */
-	protected final void startSend() throws MPIException {
-		if (null != this.values) {
-			startSendingGhostData();
+			neighborIterator.next();
+			ghostIterator.next();
 		}
 	}
 
@@ -156,27 +146,5 @@ public class ComputationalComposedBlock extends CommunicativeBlock
 				ghostRegions[i][j] = new GhostRegion(boundary, this.elementsPerDim, this.extent);
 			}
 		}
-		int totalSize = HaparandaMath.power(this.elementsPerDim, DIMENSIONALITY);
-		sendBuffer = MPI.newDoubleBuffer(totalSize);
-	}
-
-	/**
-	 * Start initialization of all ghost regions.
-	 * 
-	 * @throws MPIException 
-	 */
-	private final void startSendingGhostData() throws MPIException {
-		this.communicationTimer.start(false);
-		sendBuffer.rewind();
-		sendBuffer.put(values);
-		for (int d=0; d<DIMENSIONALITY; d++) {
-			this.sendRequest[2*d] = this.communicator.iSend(sendBuffer, 1,
-					commDataBlockTypes[d], this.neighborRank[d][0], 2*d);
-			int stride = HaparandaMath.power(this.elementsPerDim, d);
-			int startIndex = (this.elementsPerDim - this.extent) * stride;
-			this.sendRequest[2*d+1] = this.communicator.iSend(MPI.slice(sendBuffer, startIndex),
-					1, commDataBlockTypes[d], this.neighborRank[d][1], (2*d)+1);
-		}
-		this.communicationTimer.stop();
 	}
 }

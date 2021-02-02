@@ -1,7 +1,5 @@
 package haparanda.grid;
 
-import mpi.*;
-import java.nio.DoubleBuffer;
 import java.util.Arrays;
 
 import haparanda.iterators.*;
@@ -11,7 +9,7 @@ import haparanda.utils.*;
 /**
  * A class representing ghost regions of a computational block.
  *
- * @author Malin Kallen 2017-2019
+ * @author Malin Kallen 2017-2019, 2021
  */
 public class GhostRegion implements Iterable
 {
@@ -21,9 +19,7 @@ public class GhostRegion implements Iterable
 	private BoundaryId boundary;		// Boundary along which the ghost region is located
 	private int width;			// Size along boundary.dimension
 	private int elementsPerDim;	// Size along the other dimensions
-	private int totalSize;		// Total number of elements
 	private double[] values;
-	private DoubleBuffer valuesBuf;	// Direct buffer in which values will be received
 
 	/**
 	 * This constructor allocates memory for the values, but does not
@@ -51,14 +47,6 @@ public class GhostRegion implements Iterable
 		initializeMemberVariables(boundary, size, width, values);
 	}
 	
-	/**
-	 * Copy all values from buffer to values array. 
-	 */
-	public void fetchBufferValues() {
-		valuesBuf.get(values);
-		valuesBuf.clear();
-	}
-	
 	public BoundaryIterator getBoundaryIterator() {
 		return getBoundaryIterator(null);
 	}
@@ -80,25 +68,6 @@ public class GhostRegion implements Iterable
 				new ValueFieldIterator(sizes, values, 0, currentTask);
 		return result;
 	}
-	
-	/**
-	 * Initialize a receive from the process with the specified rank in the
-	 * communicator given as argument. The values will be stored in this
-	 * ghost region. The tag will be 2*D if I am at the upper boundary and
-	 * 2*D+1 if I an at the lower boundary, where D is the dimension of my
-	 * boundary. (If I am on the lower boundary, I receive data from the
-	 * upper boundary and vice versa.)
-	 *
-	 * @param communicator Communicator in which the data is communicated
-	 * @param rank Rank of sending process
-	 * @return The request created by recvInit
-	 * @throws MPIException
-	 */
-	public final Prequest initializeReceive(Comm communicator, int rank) throws MPIException {
-		int tag = 2 * this.boundary.getDimension();
-		if(this.boundary.isLowerSide()) tag += 1;
-		return communicator.recvInit(valuesBuf, totalSize, MPI.DOUBLE, rank, tag);
-	}
 
 	/**
 	 * Create an array containing the size of the ghost region in each
@@ -117,9 +86,8 @@ public class GhostRegion implements Iterable
 
 
 	/**
-	 * Initialize the member variables boundary, elementsPerDim, width,
-	 * totalSize and values to the value of the argument with the same name.
-	 * Create direct buffer for communication of values.
+	 * Initialize the member variables boundary, elementsPerDim, width and
+	 * values to the value of the argument with the same name.
 	 *
 	 * @param boundary
 	 * @param elementsPerDim
@@ -130,9 +98,7 @@ public class GhostRegion implements Iterable
 		this.boundary = boundary;
 		this.elementsPerDim = elementsPerDim;
 		this.width = width;
-		this.totalSize = HaparandaMath.power(elementsPerDim, DIMENSIONALITY-1)  * width;
 		this.values = values;
-		valuesBuf = MPI.newDoubleBuffer(totalSize);
 	}
 }
 

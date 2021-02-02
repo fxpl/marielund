@@ -6,8 +6,6 @@ import org.junit.*;
 import haparanda.grid.*;
 import haparanda.numerics.*;
 import haparanda.utils.*;
-import mpi.MPI;
-import mpi.MPIException;
 
 /**
  * Integration test for a stencil application (and everything it uses).
@@ -16,7 +14,7 @@ import mpi.MPIException;
  * block and verify that the result is close enough to the second derivative
  * of the initial function value at each point.
  *
- * @copyright Malin Kallen 2018-2019
+ * @copyright Malin Kallen 2018-2019, 2021
  */
 public class StencilApplicationTest 
 {
@@ -36,22 +34,12 @@ public class StencilApplicationTest
 	private double[] inputValues;
 	private double[] resultValues;
 	private double[] expectedValues;
-	private CommunicativeBlock inputBlock;
+	private ComputationalComposedBlock inputBlock;
 	private ComputationalBlock resultBlock;
-	
-	@BeforeClass
-	public static void initMPI() throws MPIException {
-		MPI.Init(new String[0]);
-	}
 
 	@Before
-	public void setUp () throws MPIException {
+	public void setUp () {
 		setUp(10);
-	}
-	
-	@AfterClass
-	public static void finalizeMPI() throws MPIException {
-		MPI.Finalize();
 	}
 
 	/**
@@ -66,17 +54,17 @@ public class StencilApplicationTest
 	 * Cartesian processor grid.
 	 *
 	 * @param pointsPerBlock The number of grid points in each dimension of the block on which the stencil will be applied
-	 * @throws MPIException 
 	 */
-	public void setUp(int pointsPerBlock) throws MPIException {
+	public void setUp(int pointsPerBlock) {
 		this.pointsPerBlock = pointsPerBlock;
 		stepLength = new double[DIMENSIONALITY];
 
 		inputBlock = new ComputationalComposedBlock(pointsPerBlock, ORDER_OF_ACCURACY/2);
 		for (int d=0; d<DIMENSIONALITY; d++) {
-			int pointsPerUnit = pointsPerBlock * inputBlock.procGridSize(d);
+			int pointsPerUnit = pointsPerBlock * 1; // TODO * inputBlock.procGridSize(d);
 			stepLength[d] = 1.0/pointsPerUnit;
-			smallestCoordinate[d] = inputBlock.procGridCoord(d) * stepLength[d] * pointsPerBlock;
+			// TODO smallestCoordinate[d] = inputBlock.procGridCoord(d) * stepLength[d] * pointsPerBlock;
+			smallestCoordinate[d] = 0;
 		}
 		elementsPerBlock = HaparandaMath.power(pointsPerBlock, DIMENSIONALITY);
 		inputValues = new double[elementsPerBlock];
@@ -95,10 +83,9 @@ public class StencilApplicationTest
 	 * values equal the expected values (in a floating point number sense)
 	 * after each application. Let the blocks swap value arrays between the
 	 * applications.
-	 * @throws MPIException 
 	 */
 	@Test
-	public final void testStencilApplication() throws MPIException {
+	public final void testStencilApplication() {
 		// Verify the result of the stencil application
 		applyStencil();
 		initializeExpected2ndDer();
@@ -117,12 +104,10 @@ public class StencilApplicationTest
 	
 	/**
 	 * Apply the stencil on inputBlock and write the results to resultBlock.
-	 * @throws MPIException 
 	 */
-	private void applyStencil() throws MPIException {
-		inputBlock.startCommunication();
+	private void applyStencil() {
+		inputBlock.initializeSideRegions();
 		stencil.apply(inputBlock, resultBlock);
-		inputBlock.finishCommunication();
 	}
 	
 	/**
