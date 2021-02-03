@@ -50,8 +50,7 @@ public class StencilApplicationTest
 	 *
 	 * The minimum global coordinate value is 0 and the maximum global
 	 * coordinate value is 1-h, were h=step length. However, the minimum and
-	 * maximum coordinate of each block depends on its position in the
-	 * Cartesian processor grid.
+	 * maximum coordinate of each block depends on its position in the grid.
 	 *
 	 * @param pointsPerBlock The number of grid points in each dimension of the block on which the stencil will be applied
 	 */
@@ -61,10 +60,11 @@ public class StencilApplicationTest
 
 		inputBlock = new ComputationalComposedBlock(pointsPerBlock, ORDER_OF_ACCURACY/2);
 		for (int d=0; d<DIMENSIONALITY; d++) {
-			int pointsPerUnit = pointsPerBlock * 1; // TODO * inputBlock.procGridSize(d);
+			int gridSize = d;
+			int gridCoord = Math.min(d, 1);
+			int pointsPerUnit = pointsPerBlock * gridSize;
 			stepLength[d] = 1.0/pointsPerUnit;
-			// TODO smallestCoordinate[d] = inputBlock.procGridCoord(d) * stepLength[d] * pointsPerBlock;
-			smallestCoordinate[d] = 0;
+			smallestCoordinate[d] = gridCoord * stepLength[d] * pointsPerBlock;
 		}
 		elementsPerBlock = HaparandaMath.power(pointsPerBlock, DIMENSIONALITY);
 		inputValues = new double[elementsPerBlock];

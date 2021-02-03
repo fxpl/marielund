@@ -16,7 +16,7 @@ public class ComputationalComposedBlock extends ComputationalBlock
 {
 	GhostRegion[][] ghostRegions;
 	private int extent;  // Size in dimension i of ghost regions located along the boundaries where x_i is constant
-	private ComputationalBlock[] neighbors = new ComputationalBlock[2*DIMENSIONALITY];
+	private ComputationalBlock[][] neighbors = new ComputationalBlock[DIMENSIONALITY][2];
 	
 	/**
 	 * Initialize size-related variables and neighbor array, and create ghost
@@ -33,10 +33,7 @@ public class ComputationalComposedBlock extends ComputationalBlock
 		super(elementsPerDim);
 		this.extent = extent;
 		createGhostRegions();
-		for (int i=0; i<2*DIMENSIONALITY; i++) {
-			this.neighbors[i] = this;
-			// TODO: Egen metod! Metod för att sätta andra!
-		}
+		setNeighborsToSelf();
 	}
 	
 	/**
@@ -56,10 +53,7 @@ public class ComputationalComposedBlock extends ComputationalBlock
 		super(elementsPerDim, values);
 		this.extent = extent;
 		createGhostRegions();
-		for (int i=0; i<2*DIMENSIONALITY; i++) {
-			this.neighbors[i] = this;
-			// TODO: Egen metod! Metod för att sätta andra!
-		}
+		setNeighborsToSelf();
 	}
 	
 	public BoundaryIterator getBoundaryIterator() {
@@ -89,6 +83,12 @@ public class ComputationalComposedBlock extends ComputationalBlock
 		return new ValueFieldIterator(sizes, this.values, this.smallestIndex, currentTask);
 	}
 	
+	public void setNeighbor(final BoundaryId side, final ComputationalBlock neighbor) {
+		int dimension = side.getDimension();
+		int sideIndex = side.isLowerSide() ? 0 : 1;
+		neighbors[dimension][sideIndex] = neighbor;
+	}
+	
 	/**
 	 * Initialize all side regions with values from neighbors.
 	 */
@@ -99,7 +99,7 @@ public class ComputationalComposedBlock extends ComputationalBlock
 			for (int j=0; j<2; j++) {
 				boundary.setDimension(i);
 				boundary.setIsLowerSide(0==j);
-				initializeSideRegion(neighbors[2*i + j], boundary);
+				initializeSideRegion(neighbors[i][j], boundary);
 			}
 		}
 	}
@@ -144,6 +144,14 @@ public class ComputationalComposedBlock extends ComputationalBlock
 			for (int j=0; j<2; j++) {
 				BoundaryId boundary = new BoundaryId(i, 0==j);
 				ghostRegions[i][j] = new GhostRegion(boundary, this.elementsPerDim, this.extent);
+			}
+		}
+	}
+	
+	private final void setNeighborsToSelf() {
+		for (int i=0; i<DIMENSIONALITY; i++) {
+			for (int j=0; j<2; j++) {
+				this.neighbors[i][j] = this;
 			}
 		}
 	}

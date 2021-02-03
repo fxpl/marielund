@@ -38,7 +38,7 @@ public class ComposedBlockIterationTest
 			values[i] = 2.1 * i;
 		}
 		composedBlock = new ComputationalComposedBlock(elementsPerDim, extent, values);
-		composedBlock.initializeSideRegions();	// TODO: Flytta!
+		composedBlock.initializeSideRegions();
 		boundaryIterator = composedBlock.getBoundaryIterator();
 	}
 	

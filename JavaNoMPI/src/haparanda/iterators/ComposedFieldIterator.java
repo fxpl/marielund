@@ -17,7 +17,7 @@ public abstract class ComposedFieldIterator implements FieldIterator
 	protected final static int ORDER = Integer.getInteger("DIM");
 	
 	protected FieldIterator mainIterator;
-	FieldIterator[][] sideIterators;	// TODO: Vill jag använda 2D-array?!
+	FieldIterator[][] sideIterators;
 
 	
 	public int currentIndex(int dimension) {
